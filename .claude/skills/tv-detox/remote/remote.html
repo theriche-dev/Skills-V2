@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#14151a">
+<title>Télécommande TV</title>
+<style>
+  :root {
+    --bg: #14151a; --panel: #1e2027; --key: #2a2d36; --key-hi: #363a46;
+    --text: #eceef3; --muted: #8b90a0; --accent: #ffd400; --danger: #e5484d;
+  }
+  [hidden] { display: none !important; }
+  #qr { position: fixed; inset: 0; background: rgba(10,11,14,.96); z-index: 9; display: flex;
+        flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; text-align: center; }
+  #qr .code { background: #fff; padding: 14px; border-radius: 16px; }
+  #qr .url { color: var(--muted); font-size: 13px; word-break: break-all; max-width: 340px; }
+  #qr button { padding: 0 22px; background: var(--accent); color: #111; font-weight: 600; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; justify-content: center; user-select: none; -webkit-user-select: none;
+  }
+  main { width: 100%; max-width: 380px; padding: 16px 16px 32px; display: grid; gap: 14px; }
+  header { display: flex; align-items: center; justify-content: space-between; }
+  h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  #status { font-size: 12px; color: var(--muted); }
+  #status.err { color: var(--danger); }
+  #status.err::before { color: var(--danger); }
+  .row { display: grid; gap: 10px; }
+  .r3 { grid-template-columns: repeat(3, 1fr); }
+  .r4 { grid-template-columns: repeat(4, 1fr); }
+  button {
+    font: inherit; color: var(--text); background: var(--key); border: 0; border-radius: 14px;
+    min-height: 52px; cursor: pointer; touch-action: manipulation;
+  }
+  button:active, button.on { background: var(--key-hi); transform: scale(.97); }
+  button.power { background: var(--danger); color: #fff; }
+  button svg { width: 22px; height: 22px; vertical-align: middle; fill: none; stroke: currentColor;
+               stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pad {
+    position: relative; width: 260px; height: 260px; margin: 4px auto; border-radius: 50%;
+    background: var(--panel);
+  }
+  .pad button { position: absolute; background: transparent; border-radius: 50%; width: 76px; height: 76px; }
+  .pad button:active { background: var(--key-hi); }
+  .pad .up { top: 4px; left: 92px; } .pad .down { bottom: 4px; left: 92px; }
+  .pad .left { left: 4px; top: 92px; } .pad .right { right: 4px; top: 92px; }
+  .pad .ok {
+    left: 75px; top: 75px; width: 110px; height: 110px; background: var(--key);
+    font-weight: 600; letter-spacing: .5px;
+  }
+  .mode { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border-radius: 12px; padding: 4px; }
+  .mode button { min-height: 36px; background: transparent; border-radius: 9px; font-size: 13px; color: var(--muted); }
+  .mode button[aria-pressed="true"] { background: var(--key-hi); color: var(--text); }
+  .touch {
+    height: 260px; border-radius: 24px; background: var(--panel); touch-action: none;
+    display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px;
+    text-align: center; padding: 20px;
+  }
+  .touch.flash { background: var(--key-hi); }
+  .r5 { grid-template-columns: repeat(3, 1fr); }
+  .color { min-height: 36px; }
+  .red { background: #c9302c; } .green { background: #2e8b57; }
+  .yellow { background: #d4a017; color: #111; } .blue { background: #2f6fd6; }
+  #status::before { content: "●"; margin-right: 5px; }
+  #status.ok::before { color: #3ecf74; }
+  .hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: -6px; }
+  .vol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stack { display: grid; gap: 6px; background: var(--panel); border-radius: 16px; padding: 6px; }
+  .stack span { text-align: center; font-size: 12px; color: var(--muted); }
+  form { display: flex; gap: 8px; }
+  input {
+    flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--key-hi); border-radius: 12px; padding: 0 12px; min-height: 48px;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  form button { padding: 0 16px; min-height: 48px; background: var(--accent); color: #111; font-weight: 600; }
+  details { background: var(--panel); border-radius: 16px; padding: 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  #apps { display: grid; gap: 8px; margin-top: 10px; }
+  details .row { margin-top: 10px; }
+  #apps button { min-height: 44px; text-align: left; padding: 0 14px; font-size: 13px;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="qr" hidden>
+  <h1>Scanne avec l'appareil photo de ton iPhone</h1>
+  <div class="code" id="qrCode"></div>
+  <div class="url" id="qrUrl"></div>
+  <button id="qrClose">Utiliser sur cet ordinateur</button>
+</div>
+<main>
+  <header>
+    <h1>Télécommande TV</h1>
+    <span id="status">connexion…</span>
+  </header>
+
+  <div class="row r4">
+    <button class="power" data-key="POWER" aria-label="Allumer / éteindre">
+      <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
+    </button>
+    <button data-key="TV_INPUT">Source</button>
+    <button data-key="SETTINGS" aria-label="Réglages">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button data-key="SEARCH" aria-label="Recherche">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </button>
+  </div>
+
+  <div class="mode" role="group" aria-label="Mode de navigation">
+    <button id="modePad" aria-pressed="true">Boutons</button>
+    <button id="modeTouch" aria-pressed="false">Pavé tactile</button>
+  </div>
+
+  <div class="pad" id="pad">
+    <button class="up" data-key="DPAD_UP" aria-label="Haut"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+    <button class="left" data-key="DPAD_LEFT" aria-label="Gauche"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+    <button class="ok" data-key="DPAD_CENTER" data-long="1">OK</button>
+    <button class="right" data-key="DPAD_RIGHT" aria-label="Droite"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+    <button class="down" data-key="DPAD_DOWN" aria-label="Bas"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+  </div>
+  <div class="touch" id="touch" hidden>Glisse pour te déplacer<br>Touche pour OK · appui long pour le menu</div>
+  <div class="hint">Appui long sur OK : menu d'une tuile (déplacer, remplacer, retirer)</div>
+
+  <div class="row r3">
+    <button data-key="BACK" aria-label="Retour"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+    <button data-key="HOME" aria-label="Accueil"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg></button>
+    <button data-key="MENU" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  </div>
+
+  <div class="vol">
+    <div class="stack">
+      <button data-key="VOLUME_UP" data-repeat="1" aria-label="Volume +">+</button>
+      <span>Volume</span>
+      <button data-key="VOLUME_DOWN" data-repeat="1" aria-label="Volume -">−</button>
+    </div>
+    <div class="stack">
+      <button data-key="CHANNEL_UP" aria-label="Chaîne +">
+        <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+      <span>Chaîne</span>
+      <button data-key="CHANNEL_DOWN" aria-label="Chaîne -">
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+
+  <div class="row r4">
+    <button data-key="MEDIA_REWIND" aria-label="Retour rapide"><svg viewBox="0 0 24 24"><path d="M11 18 4 12l7-6zM20 18l-7-6 7-6z"/></svg></button>
+    <button data-key="MEDIA_PLAY_PAUSE" aria-label="Lecture / pause"><svg viewBox="0 0 24 24"><path d="M5 5v14l8-7zM16 5v14M20 5v14"/></svg></button>
+    <button data-key="MEDIA_FAST_FORWARD" aria-label="Avance rapide"><svg viewBox="0 0 24 24"><path d="m13 18 7-6-7-6zM4 18l7-6-7-6z"/></svg></button>
+    <button data-key="VOLUME_MUTE" aria-label="Muet"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg></button>
+  </div>
+
+  <details>
+    <summary>Chiffres, couleurs et entrées</summary>
+    <div class="row r5">
+      <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+      <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+      <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+      <button data-key="INFO">Info</button><button data-key="0">0</button>
+      <button data-key="LAST_CHANNEL">Préc.</button>
+    </div>
+    <div class="row r4">
+      <button class="color red" data-key="PROG_RED" aria-label="Rouge"></button>
+      <button class="color green" data-key="PROG_GREEN" aria-label="Vert"></button>
+      <button class="color yellow" data-key="PROG_YELLOW" aria-label="Jaune"></button>
+      <button class="color blue" data-key="PROG_BLUE" aria-label="Bleu"></button>
+    </div>
+    <div class="row r3">
+      <button data-key="TV_INPUT_HDMI_1">HDMI 1</button>
+      <button data-key="TV_INPUT_HDMI_2">HDMI 2</button>
+      <button data-key="TV_INPUT_HDMI_3">HDMI 3</button>
+      <button data-key="TV">TV</button>
+      <button data-key="TV_INPUT_COMPOSITE_1">AV</button>
+      <button data-key="GUIDE">Guide</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Si une entrée ne réagit pas sur ta TV, utilise Source.</div>
+  </details>
+
+  <form id="type">
+    <input id="text" placeholder="Taper du texte (sans accents)" autocomplete="off" enterkeyhint="send">
+    <button type="submit">Envoyer</button>
+  </form>
+
+  <details id="appsBox">
+    <summary>Ouvrir une app</summary>
+    <div id="apps"><span class="hint">Chargement…</span></div>
+  </details>
+</main>
+<script>
+  const token = new URLSearchParams(location.search).get("t") || "";
+
+  // Opened by remote.py --open on the computer: show a QR code so the phone gets the same remote.
+  if (new URLSearchParams(location.search).get("qr")) {
+    const phoneUrl = location.origin + "/?t=" + encodeURIComponent(token);
+    const box = document.getElementById("qr");
+    box.hidden = false;
+    document.getElementById("qrUrl").textContent = phoneUrl;
+    document.getElementById("qrClose").onclick = () => { box.hidden = true; };
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload = () => new QRCode(document.getElementById("qrCode"), { text: phoneUrl, width: 220, height: 220 });
+    s.onerror = () => { document.getElementById("qrCode").hidden = true; };
+    document.head.appendChild(s);
+  }
+  const status = document.getElementById("status");
+
+  let online = false;
+  function show(msg, err) { status.textContent = msg; status.className = err ? "err" : "ok"; }
+  async function poll() {
+    try {
+      const r = await fetch("/status", { headers: { "X-Token": token } });
+      const data = await r.json();
+      online = data.state === "device";
+      if (online) { if (status.className !== "ok" || status.textContent !== "TV connectée") show("TV connectée"); }
+      else show(data.state.includes("unauthorized") ? "autorise le débogage sur la TV" : "TV injoignable", true);
+    } catch (e) { online = false; show("ordinateur injoignable", true); }
+  }
+  poll(); setInterval(poll, 4000);
+
+  async function post(path, body) {
+    try {
+      const r = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Token": token },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || r.status);
+      if (online) show("TV connectée");
+    } catch (e) { show("erreur : " + e.message, true); }
+  }
+
+  const key = (name, long) => post("/key", { key: name, long: !!long });
+  if (navigator.vibrate) document.addEventListener("pointerdown", e => {
+    if (e.target.closest("button")) navigator.vibrate(10);
+  });
+
+  // Buttons: tap sends once; data-long sends a long press after 600 ms; data-repeat repeats while held.
+  document.querySelectorAll("[data-key]").forEach(btn => {
+    let timer = null, fired = false;
+    const stop = () => { clearTimeout(timer); clearInterval(timer); timer = null; btn.classList.remove("on"); };
+    btn.addEventListener("pointerdown", e => {
+      e.preventDefault(); fired = false; btn.classList.add("on");
+      if (btn.dataset.long) {
+        timer = setTimeout(() => { fired = true; key(btn.dataset.key, true); }, 600);
+      } else {
+        key(btn.dataset.key); fired = true;
+        if (btn.dataset.repeat) timer = setTimeout(() => { timer = setInterval(() => key(btn.dataset.key), 150); }, 400);
+      }
+    });
+    btn.addEventListener("pointerup", () => { if (!fired) key(btn.dataset.key); stop(); });
+    btn.addEventListener("pointerleave", stop);
+    btn.addEventListener("pointercancel", stop);
+    btn.addEventListener("contextmenu", e => e.preventDefault());
+  });
+
+  document.getElementById("type").addEventListener("submit", e => {
+    e.preventDefault();
+    const input = document.getElementById("text");
+    if (input.value) post("/text", { text: input.value });
+    input.value = "";
+  });
+
+  // Touchpad: a swipe moves once per 40 px, so a long swipe scrolls several tiles; a tap is OK.
+  const pad = document.getElementById("pad"), touch = document.getElementById("touch");
+  const setMode = t => {
+    pad.hidden = t; touch.hidden = !t;
+    document.getElementById("modePad").setAttribute("aria-pressed", !t);
+    document.getElementById("modeTouch").setAttribute("aria-pressed", t);
+    try { localStorage.setItem("touchMode", t ? "1" : ""); } catch (e) {}
+  };
+  document.getElementById("modePad").onclick = () => setMode(false);
+  document.getElementById("modeTouch").onclick = () => setMode(true);
+  try { if (localStorage.getItem("touchMode")) setMode(true); } catch (e) {}
+  let start = null, moved = false, holdTimer = null;
+  const flash = () => { touch.classList.add("flash"); setTimeout(() => touch.classList.remove("flash"), 90); };
+  touch.addEventListener("pointerdown", e => {
+    start = { x: e.clientX, y: e.clientY }; moved = false;
+    holdTimer = setTimeout(() => { if (!moved) { moved = true; flash(); key("DPAD_CENTER", true); } }, 600);
+  });
+  touch.addEventListener("pointermove", e => {
+    if (!start) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 40) return;
+    moved = true; clearTimeout(holdTimer); flash();
+    key(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "DPAD_RIGHT" : "DPAD_LEFT") : (dy > 0 ? "DPAD_DOWN" : "DPAD_UP"));
+    if (navigator.vibrate) navigator.vibrate(8);
+    start = { x: e.clientX, y: e.clientY };
+  });
+  const end = () => { clearTimeout(holdTimer); if (start && !moved) { flash(); key("DPAD_CENTER"); } start = null; };
+  touch.addEventListener("pointerup", end);
+  touch.addEventListener("pointercancel", () => { clearTimeout(holdTimer); start = null; });
+
+  // Keyboard shortcuts when used from a computer.
+  const map = { ArrowUp: "DPAD_UP", ArrowDown: "DPAD_DOWN", ArrowLeft: "DPAD_LEFT", ArrowRight: "DPAD_RIGHT",
+                Enter: "DPAD_CENTER", Backspace: "BACK", Escape: "BACK", h: "HOME", m: "MENU", " ": "MEDIA_PLAY_PAUSE",
+                "+": "VOLUME_UP", "-": "VOLUME_DOWN", "0": "VOLUME_MUTE" };
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const name = map[e.key];
+    if (name) { e.preventDefault(); key(name); }
+  });
+
+  // App list, loaded the first time the section opens.
+  const box = document.getElementById("appsBox"), list = document.getElementById("apps");
+  box.addEventListener("toggle", async () => {
+    if (!box.open || box.dataset.loaded) return;
+    try {
+      const r = await fetch("/apps", { headers: { "X-Token": token } });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.status);
+      box.dataset.loaded = 1;
+      list.replaceChildren(...data.apps.map(app => {
+        const b = document.createElement("button");
+        b.textContent = app.name;
+        b.title = app.package;
+        b.addEventListener("click", () => post("/launch", { package: app.package }));
+        return b;
+      }));
+      if (!data.apps.length) list.textContent = "Aucune app trouvée.";
+    } catch (e) { list.textContent = "Impossible de lister les apps : " + e.message; }
+  });
+</script>
+</body>
+</html>
