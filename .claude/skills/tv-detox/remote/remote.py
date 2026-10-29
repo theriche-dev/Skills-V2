@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 import unicodedata
+import webbrowser
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -327,6 +328,8 @@ def main():
                         help="address to listen on (127.0.0.1 = this computer only)")
     parser.add_argument("--token", default=os.environ.get("REMOTE_TOKEN"),
                         help="fixed token instead of a random one (or set REMOTE_TOKEN)")
+    parser.add_argument("--open", action="store_true",
+                        help="also open the remote in this computer's browser, with a QR code for the phone")
     parser.add_argument("--probe", action="store_true",
                         help="print what the TV is (model, Android, inputs) and exit")
     args = parser.parse_args()
@@ -352,7 +355,10 @@ def main():
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     shown = lan_ip() if args.host == "0.0.0.0" else args.host
     print("Télécommande prête pour %s. Ouvre cette adresse sur ton téléphone (même Wi-Fi) :" % tv.serial)
-    print("  http://%s:%d/?t=%s" % (shown, args.port, Handler.token))
+    url = "http://%s:%d/?t=%s" % (shown, args.port, Handler.token)
+    print("  " + url)
+    if args.open:
+        webbrowser.open(url + "&qr=1")
     print("Ctrl+C pour arrêter.")
     try:
         server.serve_forever()

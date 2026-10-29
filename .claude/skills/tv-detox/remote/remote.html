@@ -11,6 +11,11 @@
     --text: #eceef3; --muted: #8b90a0; --accent: #ffd400; --danger: #e5484d;
   }
   [hidden] { display: none !important; }
+  #qr { position: fixed; inset: 0; background: rgba(10,11,14,.96); z-index: 9; display: flex;
+        flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; text-align: center; }
+  #qr .code { background: #fff; padding: 14px; border-radius: 16px; }
+  #qr .url { color: var(--muted); font-size: 13px; word-break: break-all; max-width: 340px; }
+  #qr button { padding: 0 22px; background: var(--accent); color: #111; font-weight: 600; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
@@ -81,6 +86,12 @@
 </style>
 </head>
 <body>
+<div id="qr" hidden>
+  <h1>Scanne avec l'appareil photo de ton iPhone</h1>
+  <div class="code" id="qrCode"></div>
+  <div class="url" id="qrUrl"></div>
+  <button id="qrClose">Utiliser sur cet ordinateur</button>
+</div>
 <main>
   <header>
     <h1>Télécommande TV</h1>
@@ -181,6 +192,20 @@
 </main>
 <script>
   const token = new URLSearchParams(location.search).get("t") || "";
+
+  // Opened by remote.py --open on the computer: show a QR code so the phone gets the same remote.
+  if (new URLSearchParams(location.search).get("qr")) {
+    const phoneUrl = location.origin + "/?t=" + encodeURIComponent(token);
+    const box = document.getElementById("qr");
+    box.hidden = false;
+    document.getElementById("qrUrl").textContent = phoneUrl;
+    document.getElementById("qrClose").onclick = () => { box.hidden = true; };
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload = () => new QRCode(document.getElementById("qrCode"), { text: phoneUrl, width: 220, height: 220 });
+    s.onerror = () => { document.getElementById("qrCode").hidden = true; };
+    document.head.appendChild(s);
+  }
   const status = document.getElementById("status");
 
   let online = false;

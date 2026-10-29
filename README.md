@@ -14,6 +14,17 @@ Skills pour [Claude Code](https://claude.com/claude-code).
 Basé sur [Ansub/tv-detox](https://github.com/Ansub/tv-detox) (MIT, copié dans
 `.claude/skills/tv-detox/upstream/`, commit `670a5ab`).
 
+### Télécommande sur Windows, en double-clic
+
+1. Sur GitHub, **Code → Download ZIP**, puis décompresse le dossier.
+2. Double-clique sur **`Telecommande-TV.bat`**. Il installe Python si besoin, récupère adb,
+   cherche la TV sur ton réseau et ouvre la télécommande avec un QR code.
+3. Si Windows demande d'autoriser Python sur le réseau : coche **Réseaux privés** → **Autoriser**.
+4. Scanne le QR code avec l'appareil photo de l'iPhone.
+
+La TV doit accepter adb par le réseau (port 5555), ouvert d'usine sur certaines TV, sinon à
+activer dans ses options développeur.
+
 ### Utilisation
 
 Claude Code doit tourner **sur un ordinateur du même réseau que la TV** (pas depuis claude.ai ou
