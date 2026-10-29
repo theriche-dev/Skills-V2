@@ -10,6 +10,7 @@
     --bg: #14151a; --panel: #1e2027; --key: #2a2d36; --key-hi: #363a46;
     --text: #eceef3; --muted: #8b90a0; --accent: #ffd400; --danger: #e5484d;
   }
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
@@ -21,6 +22,7 @@
   h1 { font-size: 17px; margin: 0; font-weight: 600; }
   #status { font-size: 12px; color: var(--muted); }
   #status.err { color: var(--danger); }
+  #status.err::before { color: var(--danger); }
   .row { display: grid; gap: 10px; }
   .r3 { grid-template-columns: repeat(3, 1fr); }
   .r4 { grid-template-columns: repeat(4, 1fr); }
@@ -44,6 +46,21 @@
     left: 75px; top: 75px; width: 110px; height: 110px; background: var(--key);
     font-weight: 600; letter-spacing: .5px;
   }
+  .mode { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border-radius: 12px; padding: 4px; }
+  .mode button { min-height: 36px; background: transparent; border-radius: 9px; font-size: 13px; color: var(--muted); }
+  .mode button[aria-pressed="true"] { background: var(--key-hi); color: var(--text); }
+  .touch {
+    height: 260px; border-radius: 24px; background: var(--panel); touch-action: none;
+    display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px;
+    text-align: center; padding: 20px;
+  }
+  .touch.flash { background: var(--key-hi); }
+  .r5 { grid-template-columns: repeat(3, 1fr); }
+  .color { min-height: 36px; }
+  .red { background: #c9302c; } .green { background: #2e8b57; }
+  .yellow { background: #d4a017; color: #111; } .blue { background: #2f6fd6; }
+  #status::before { content: "●"; margin-right: 5px; }
+  #status.ok::before { color: #3ecf74; }
   .hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: -6px; }
   .vol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stack { display: grid; gap: 6px; background: var(--panel); border-radius: 16px; padding: 6px; }
@@ -58,6 +75,7 @@
   details { background: var(--panel); border-radius: 16px; padding: 12px; }
   summary { cursor: pointer; font-weight: 600; }
   #apps { display: grid; gap: 8px; margin-top: 10px; }
+  details .row { margin-top: 10px; }
   #apps button { min-height: 44px; text-align: left; padding: 0 14px; font-size: 13px;
                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
@@ -66,7 +84,7 @@
 <main>
   <header>
     <h1>Télécommande TV</h1>
-    <span id="status">prête</span>
+    <span id="status">connexion…</span>
   </header>
 
   <div class="row r4">
@@ -82,13 +100,19 @@
     </button>
   </div>
 
-  <div class="pad">
+  <div class="mode" role="group" aria-label="Mode de navigation">
+    <button id="modePad" aria-pressed="true">Boutons</button>
+    <button id="modeTouch" aria-pressed="false">Pavé tactile</button>
+  </div>
+
+  <div class="pad" id="pad">
     <button class="up" data-key="DPAD_UP" aria-label="Haut"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
     <button class="left" data-key="DPAD_LEFT" aria-label="Gauche"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
     <button class="ok" data-key="DPAD_CENTER" data-long="1">OK</button>
     <button class="right" data-key="DPAD_RIGHT" aria-label="Droite"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
     <button class="down" data-key="DPAD_DOWN" aria-label="Bas"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
   </div>
+  <div class="touch" id="touch" hidden>Glisse pour te déplacer<br>Touche pour OK · appui long pour le menu</div>
   <div class="hint">Appui long sur OK : menu d'une tuile (déplacer, remplacer, retirer)</div>
 
   <div class="row r3">
@@ -119,8 +143,32 @@
     <button data-key="VOLUME_MUTE" aria-label="Muet"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg></button>
   </div>
 
+  <details>
+    <summary>Chiffres, couleurs et entrées</summary>
+    <div class="row r5">
+      <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+      <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+      <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+      <button data-key="INFO">Info</button><button data-key="0">0</button>
+      <button data-key="LAST_CHANNEL">Préc.</button>
+    </div>
+    <div class="row r4">
+      <button class="color red" data-key="PROG_RED" aria-label="Rouge"></button>
+      <button class="color green" data-key="PROG_GREEN" aria-label="Vert"></button>
+      <button class="color yellow" data-key="PROG_YELLOW" aria-label="Jaune"></button>
+      <button class="color blue" data-key="PROG_BLUE" aria-label="Bleu"></button>
+    </div>
+    <div class="row r4">
+      <button data-key="TV">TV</button>
+      <button data-key="TV_INPUT_HDMI_1">HDMI 1</button>
+      <button data-key="TV_INPUT_HDMI_2">HDMI 2</button>
+      <button data-key="GUIDE">Guide</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Si HDMI 1/2 ne réagit pas sur ta TV, utilise Source.</div>
+  </details>
+
   <form id="type">
-    <input id="text" placeholder="Taper du texte sur la TV" autocomplete="off" enterkeyhint="send">
+    <input id="text" placeholder="Taper du texte (sans accents)" autocomplete="off" enterkeyhint="send">
     <button type="submit">Envoyer</button>
   </form>
 
@@ -133,7 +181,18 @@
   const token = new URLSearchParams(location.search).get("t") || "";
   const status = document.getElementById("status");
 
-  function show(msg, err) { status.textContent = msg; status.className = err ? "err" : ""; }
+  let online = false;
+  function show(msg, err) { status.textContent = msg; status.className = err ? "err" : "ok"; }
+  async function poll() {
+    try {
+      const r = await fetch("/status", { headers: { "X-Token": token } });
+      const data = await r.json();
+      online = data.state === "device";
+      if (online) { if (status.className !== "ok" || status.textContent !== "TV connectée") show("TV connectée"); }
+      else show(data.state.includes("unauthorized") ? "autorise le débogage sur la TV" : "TV injoignable", true);
+    } catch (e) { online = false; show("ordinateur injoignable", true); }
+  }
+  poll(); setInterval(poll, 4000);
 
   async function post(path, body) {
     try {
@@ -144,7 +203,7 @@
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || r.status);
-      show("prête");
+      if (online) show("TV connectée");
     } catch (e) { show("erreur : " + e.message, true); }
   }
 
@@ -179,6 +238,36 @@
     input.value = "";
   });
 
+  // Touchpad: a swipe moves once per 40 px, so a long swipe scrolls several tiles; a tap is OK.
+  const pad = document.getElementById("pad"), touch = document.getElementById("touch");
+  const setMode = t => {
+    pad.hidden = t; touch.hidden = !t;
+    document.getElementById("modePad").setAttribute("aria-pressed", !t);
+    document.getElementById("modeTouch").setAttribute("aria-pressed", t);
+    try { localStorage.setItem("touchMode", t ? "1" : ""); } catch (e) {}
+  };
+  document.getElementById("modePad").onclick = () => setMode(false);
+  document.getElementById("modeTouch").onclick = () => setMode(true);
+  try { if (localStorage.getItem("touchMode")) setMode(true); } catch (e) {}
+  let start = null, moved = false, holdTimer = null;
+  const flash = () => { touch.classList.add("flash"); setTimeout(() => touch.classList.remove("flash"), 90); };
+  touch.addEventListener("pointerdown", e => {
+    start = { x: e.clientX, y: e.clientY }; moved = false;
+    holdTimer = setTimeout(() => { if (!moved) { moved = true; flash(); key("DPAD_CENTER", true); } }, 600);
+  });
+  touch.addEventListener("pointermove", e => {
+    if (!start) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 40) return;
+    moved = true; clearTimeout(holdTimer); flash();
+    key(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "DPAD_RIGHT" : "DPAD_LEFT") : (dy > 0 ? "DPAD_DOWN" : "DPAD_UP"));
+    if (navigator.vibrate) navigator.vibrate(8);
+    start = { x: e.clientX, y: e.clientY };
+  });
+  const end = () => { clearTimeout(holdTimer); if (start && !moved) { flash(); key("DPAD_CENTER"); } start = null; };
+  touch.addEventListener("pointerup", end);
+  touch.addEventListener("pointercancel", () => { clearTimeout(holdTimer); start = null; });
+
   // Keyboard shortcuts when used from a computer.
   const map = { ArrowUp: "DPAD_UP", ArrowDown: "DPAD_DOWN", ArrowLeft: "DPAD_LEFT", ArrowRight: "DPAD_RIGHT",
                 Enter: "DPAD_CENTER", Backspace: "BACK", Escape: "BACK", h: "HOME", m: "MENU", " ": "MEDIA_PLAY_PAUSE",
@@ -198,10 +287,11 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || r.status);
       box.dataset.loaded = 1;
-      list.replaceChildren(...data.apps.map(pkg => {
+      list.replaceChildren(...data.apps.map(app => {
         const b = document.createElement("button");
-        b.textContent = pkg;
-        b.addEventListener("click", () => post("/launch", { package: pkg }));
+        b.textContent = app.name;
+        b.title = app.package;
+        b.addEventListener("click", () => post("/launch", { package: app.package }));
         return b;
       }));
       if (!data.apps.length) list.textContent = "Aucune app trouvée.";

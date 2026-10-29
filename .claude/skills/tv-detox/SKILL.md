@@ -101,15 +101,22 @@ Vérifier / réparer après une mise à jour de la TV : `sh upstream/check.sh <T
 ## 5. Télécommande numérique
 
 ```sh
+python3 remote/remote.py                 # trouve la TV tout seul (adb déjà connecté, sinon scan du port 5555)
 python3 remote/remote.py <TV>            # ou --port 9000, --host 127.0.0.1
+python3 remote/remote.py <TV> --probe    # marque, modèle, Android, Android TV ou non, launcher, entrées HDMI
 ```
 
-Le script se connecte à la TV, puis affiche une URL du type `http://192.168.1.20:8765/?t=<jeton>`.
+Commence par `--probe` sur une TV inconnue pour savoir quoi adapter. Le script se connecte à la
+TV, puis affiche une URL du type `http://192.168.1.20:8765/?t=<jeton>`.
 L'utilisateur l'ouvre sur son téléphone (même Wi-Fi) ou dans le navigateur de l'ordinateur et
 peut l'ajouter à l'écran d'accueil du téléphone. Elle offre : croix directionnelle + OK (appui
-long = menu des tuiles TV Detox), Retour, Accueil, Menu, Marche/Arrêt, Source, Réglages,
-Recherche, volume et chaînes (maintien = répétition), lecture/pause/avance/retour, Muet, envoi de
-texte au clavier de la TV, et lancement direct des apps installées. Depuis un ordinateur, les
+long = menu des tuiles TV Detox) ou pavé tactile (glisser = flèches, toucher = OK), Retour,
+Accueil, Menu, Marche/Arrêt, Source, Réglages, Recherche, volume et chaînes (maintien =
+répétition), lecture/pause/avance/retour, Muet, chiffres 0-9, Info, chaîne précédente, touches
+couleur, TV, HDMI 1/2, Guide, envoi de texte (ASCII seulement : les accents sont retirés), et
+lancement des apps installées (avec leur nom). Un voyant indique si la TV répond ; le serveur se
+reconnecte tout seul après un redémarrage de la TV. Les touches passent par un shell adb
+permanent pour plus de réactivité. Depuis un ordinateur, les
 flèches, Entrée, Échap/Retour arrière, `h`, `m`, espace, `+`, `-`, `0` fonctionnent aussi.
 
 Sécurité : seules les touches de la liste blanche de `remote.py` peuvent être envoyées ; chaque
@@ -119,6 +126,24 @@ bouton `data-key` dans `remote.html`. Tester ensuite avec un faux `adb` ou un é
 
 La télécommande a besoin du débogage adb activé : rappelle à l'utilisateur que pendant ce temps
 d'autres appareils du réseau peuvent demander à contrôler la TV.
+
+### Star Track (ex. ST-43D-MT2200-SMART) et autres « Smart TV » Android génériques
+
+Marque vendue surtout aux Émirats / en Afrique ; pas de fiche officielle trouvée pour ce modèle.
+Les fiches revendeurs du 43" parlent d'Android (souvent un Android « téléphone » non certifié
+Android TV, avec tuner DVB-T2/S2 et 2 HDMI). À vérifier avec `--probe`. Points à connaître :
+
+- Mode développeur : Paramètres → (Système / Préférences) → À propos → 7 appuis sur **Numéro de
+  build** / **Version**. Si l'écran de réglages TV n'a pas d'Options développeur, ouvrir l'app
+  « Paramètres » Android (`com.android.settings`) depuis la liste des apps. Activer le **débogage
+  USB** et, s'il existe, **ADB par réseau** (port 5555). Note l'IP de la TV (Paramètres → Réseau).
+- **Marche/Arrêt** : éteint la TV, mais en veille le Wi-Fi est en général coupé, donc la rallumer
+  par le réseau ne marche souvent pas (utiliser la télécommande physique).
+- HDMI 1/2 (`KEYCODE_TV_INPUT_HDMI_n`), Guide, touches couleur : dépend du firmware. Si rien ne
+  se passe, utiliser **Source**. Pour une touche maison inconnue, demander à l'utilisateur
+  d'appuyer dessus pendant `adb shell getevent -lt` pour lire son code.
+- Si `--probe` dit « plain Android », les apps sont listées via `LAUNCHER` (pas `LEANBACK`) et
+  l'écran d'accueil TV Detox est fait pour une TV : il fonctionne, mais vérifier que Home l'ouvre.
 
 ## 6. Annuler / dépanner
 

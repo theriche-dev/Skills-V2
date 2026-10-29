@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Digital remote for an Android TV / Google TV, driven over adb.
+"""Digital remote for an Android TV / Google TV / Android "Smart TV", driven over adb.
 
-    python3 remote.py <TV_IP>             # serves the remote on http://<this computer>:8765
+    python3 remote.py                     # finds the TV on your network by itself
+    python3 remote.py <TV_IP>             # or name it (port 5555 is added)
     python3 remote.py <TV_IP> --port 9000
+    python3 remote.py <TV_IP> --probe     # prints what the TV is, to adapt the remote
     python3 remote.py emulator-5554       # an adb serial works too
 
 Open the printed URL on your phone (same Wi-Fi). The URL carries a random token:
@@ -17,6 +19,10 @@ import shlex
 import socket
 import subprocess
 import sys
+import threading
+import time
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -25,14 +31,37 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Only these key codes can be sent, so the page can't run anything else on the TV.
 KEYS = {
     "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT", "DPAD_CENTER",
-    "BACK", "HOME", "MENU", "SETTINGS", "SEARCH", "GUIDE", "TV_INPUT", "CAPTIONS",
+    "BACK", "HOME", "MENU", "SETTINGS", "SEARCH", "GUIDE", "INFO", "CAPTIONS",
+    "TV_INPUT", "TV_INPUT_HDMI_1", "TV_INPUT_HDMI_2", "TV_INPUT_HDMI_3", "TV",
     "VOLUME_UP", "VOLUME_DOWN", "VOLUME_MUTE",
-    "CHANNEL_UP", "CHANNEL_DOWN",
+    "CHANNEL_UP", "CHANNEL_DOWN", "LAST_CHANNEL",
+    "PROG_RED", "PROG_GREEN", "PROG_YELLOW", "PROG_BLUE",
     "MEDIA_PLAY_PAUSE", "MEDIA_STOP", "MEDIA_NEXT", "MEDIA_PREVIOUS",
     "MEDIA_REWIND", "MEDIA_FAST_FORWARD",
     "POWER", "SLEEP", "WAKEUP", "ENTER", "DEL",
-}
+} | {str(n) for n in range(10)}
 PACKAGE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
+
+# Friendly names for the app list; anything else shows its package name.
+APP_NAMES = {
+    "com.google.android.youtube.tv": "YouTube",
+    "com.google.android.youtube.tvkids": "YouTube Kids",
+    "com.google.android.youtube.tvmusic": "YouTube Music",
+    "com.netflix.ninja": "Netflix",
+    "com.netflix.mediaclient": "Netflix",
+    "com.amazon.amazonvideo.livingroom": "Prime Video",
+    "com.disney.disneyplus": "Disney+",
+    "com.spotify.tv.android": "Spotify",
+    "net.mbc.shahid.androidtv": "Shahid",
+    "com.canal.android.canal": "myCANAL",
+    "com.mxtech.videoplayer.television": "MX Player",
+    "org.videolan.vlc": "VLC",
+    "com.android.vending": "Play Store",
+    "com.android.tv.settings": "Paramètres",
+    "com.android.settings": "Paramètres",
+    "com.google.android.tvlauncher": "Accueil Android TV",
+    "com.ansub.tvhome": "TV Detox",
+}
 
 
 def target_of(arg):
@@ -44,46 +73,149 @@ def target_of(arg):
     return arg
 
 
+def adb(*args, timeout=10):
+    return subprocess.run(["adb", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def find_tv():
+    """A device adb already knows (USB, earlier connect), else a scan of the /24 for port 5555."""
+    devices = [line.split()[0] for line in adb("devices").stdout.splitlines()[1:]
+               if line.strip().endswith("device")]
+    if len(devices) == 1:
+        return devices[0]
+    if len(devices) > 1:
+        sys.exit("Several devices are connected to adb, pick one: " + ", ".join(devices))
+
+    me = lan_ip()
+    if me.startswith("127."):
+        sys.exit("No network found. Name the TV: python3 remote.py <TV_IP>")
+    prefix = me.rsplit(".", 1)[0]
+    print("Looking for the TV on %s.0/24 (port 5555)…" % prefix)
+
+    def open_5555(host):
+        try:
+            with socket.create_connection((host, 5555), timeout=0.5):
+                return host
+        except OSError:
+            return None
+
+    with ThreadPoolExecutor(64) as pool:
+        hosts = [h for h in pool.map(open_5555, ("%s.%d" % (prefix, n) for n in range(1, 255)))
+                 if h and h != me]
+    if len(hosts) == 1:
+        return hosts[0] + ":5555"
+    if hosts:
+        sys.exit("Several devices answer on port 5555, pick one: " + ", ".join(hosts))
+    sys.exit("No TV found on the network. Check that network/USB debugging is on, then name it: "
+             "python3 remote.py <TV_IP> (Settings > Network on the TV shows its IP).")
+
+
+def ascii_text(text):
+    # input text only types ASCII: "é" becomes "e", anything else unknown is dropped.
+    flat = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in flat if 32 <= ord(c) < 127)
+
+
 class TV:
     def __init__(self, serial):
         self.serial = serial
+        self.shell_proc = None
+        self.lock = threading.Lock()
+        self.state = ("unknown", 0.0)
 
     def connect(self):
         if ":" in self.serial:
-            subprocess.run(["adb", "connect", self.serial], capture_output=True, timeout=10)
-        out = subprocess.run(["adb", "-s", self.serial, "get-state"],
-                             capture_output=True, text=True, timeout=10)
+            adb("connect", self.serial)
+        out = adb("-s", self.serial, "get-state")
         return (out.stdout + out.stderr).strip()
 
+    def online(self):
+        # Checked at most every 3 s; reconnects by itself after the TV restarts or wakes.
+        state, at = self.state
+        if time.time() - at > 3:
+            state = self.connect()
+            if state != "device":
+                self._close_shell()
+            self.state = (state, time.time())
+        return state
+
     def shell(self, command, timeout=10):
-        out = subprocess.run(["adb", "-s", self.serial, "shell", command],
-                             capture_output=True, text=True, timeout=timeout)
+        out = adb("-s", self.serial, "shell", command, timeout=timeout)
         if out.returncode != 0:
             raise RuntimeError((out.stderr or out.stdout).strip() or "adb failed")
         return out.stdout.replace("\r", "")
 
+    # Keys go through one long-lived adb shell, so each press skips adb's start-up time.
     def key(self, name, long_press=False):
-        flag = "--longpress " if long_press else ""
-        self.shell("input keyevent %sKEYCODE_%s" % (flag, name))
+        self._run_in_shell("input keyevent %sKEYCODE_%s" % ("--longpress " if long_press else "", name))
+
+    def _run_in_shell(self, command):
+        with self.lock:
+            for _ in range(2):
+                if self.shell_proc is None or self.shell_proc.poll() is not None:
+                    self.shell_proc = subprocess.Popen(
+                        ["adb", "-s", self.serial, "shell"], stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+                try:
+                    self.shell_proc.stdin.write(command + "\n")
+                    self.shell_proc.stdin.flush()
+                    return
+                except OSError:
+                    self.shell_proc = None
+
+    def _close_shell(self):
+        with self.lock:
+            if self.shell_proc and self.shell_proc.poll() is None:
+                self.shell_proc.kill()
+            self.shell_proc = None
 
     def text(self, text):
         # input text reads %s as a space; everything else is quoted for the TV's shell.
-        self.shell("input text " + shlex.quote(text.replace(" ", "%s")))
+        text = ascii_text(text)
+        if text:
+            self.shell("input text " + shlex.quote(text.replace(" ", "%s")))
 
     def launch(self, package):
         self.shell("monkey -p %s -c android.intent.category.LEANBACK_LAUNCHER 1" % package)
 
     def apps(self):
-        out = self.shell("cmd package query-activities --brief -a android.intent.action.MAIN"
-                         " -c android.intent.category.LEANBACK_LAUNCHER")
+        # Android TV apps first; plain Android "Smart TVs" often only have phone-style launchers.
         found = []
-        for line in out.splitlines():
-            line = line.strip()
-            if "/" in line:
-                package = line.split("/", 1)[0]
-                if PACKAGE.match(package) and package not in found:
+        for category in ("LEANBACK_LAUNCHER", "LAUNCHER"):
+            out = self.shell("cmd package query-activities --brief -a android.intent.action.MAIN"
+                             " -c android.intent.category." + category)
+            for line in out.splitlines():
+                package = line.strip().split("/", 1)[0]
+                if "/" in line and PACKAGE.match(package) and package not in found:
                     found.append(package)
-        return sorted(found)
+        apps = [{"package": p, "name": APP_NAMES.get(p, p)} for p in found]
+        return sorted(apps, key=lambda a: (a["name"] == a["package"], a["name"].lower()))
+
+    def probe(self):
+        props = {}
+        for prop in ("ro.product.brand", "ro.product.manufacturer", "ro.product.model",
+                     "ro.product.device", "ro.board.platform", "ro.build.version.release",
+                     "ro.build.version.sdk", "ro.build.characteristics"):
+            props[prop] = self.shell("getprop " + prop).strip()
+        home = self.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN"
+                          " -c android.intent.category.HOME").strip().splitlines()
+        props["home screen"] = home[-1] if home else "?"
+        props["android tv"] = "yes" if "android.software.leanback" in self.shell(
+            "pm list features") else "no (plain Android, a phone-style system)"
+        inputs = re.findall(r"(?:id|inputId)=(\S*HDMI\S*)", self.shell("dumpsys tv_input"), re.I)
+        props["hdmi inputs"] = ", ".join(sorted(set(i.rstrip(",}") for i in inputs))) or "none found"
+        return props
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -115,6 +247,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             with open(os.path.join(HERE, "remote.html"), "rb") as f:
                 return self.reply(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/status":
+            return self.reply(200, {"state": self.tv.online()})
         if url.path == "/apps":
             try:
                 return self.reply(200, {"apps": self.tv.apps()})
@@ -138,9 +272,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(400, {"error": "unknown key"})
                 self.tv.key(name, bool(body.get("long")))
             elif url.path == "/text":
-                text = str(body.get("text", ""))[:500]
-                if text:
-                    self.tv.text(text)
+                self.tv.text(str(body.get("text", ""))[:500])
             elif url.path == "/launch":
                 package = str(body.get("package", ""))
                 if not PACKAGE.match(package):
@@ -153,40 +285,37 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, {"ok": True})
 
 
-def lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("10.255.255.255", 1))
-        return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
-
-
 def main():
     parser = argparse.ArgumentParser(description="Digital remote for an Android TV, over adb.")
-    parser.add_argument("tv", help="TV IP (port 5555 added), IP:port, or an adb serial")
+    parser.add_argument("tv", nargs="?",
+                        help="TV IP (port 5555 added), IP:port, or an adb serial; found if left out")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="0.0.0.0",
                         help="address to listen on (127.0.0.1 = this computer only)")
     parser.add_argument("--token", default=os.environ.get("REMOTE_TOKEN"),
                         help="fixed token instead of a random one (or set REMOTE_TOKEN)")
+    parser.add_argument("--probe", action="store_true",
+                        help="print what the TV is (model, Android, inputs) and exit")
     args = parser.parse_args()
 
     try:
-        subprocess.run(["adb", "version"], capture_output=True, check=True)
+        adb("version").check_returncode()
     except (OSError, subprocess.CalledProcessError):
         sys.exit("adb is missing. Mac: brew install android-platform-tools · "
                  "Windows/Linux: https://developer.android.com/tools/releases/platform-tools")
 
-    tv = TV(target_of(args.tv))
+    tv = TV(target_of(args.tv) if args.tv else find_tv())
     state = tv.connect()
     if "unauthorized" in state:
         sys.exit('Your TV is asking "Allow debugging?". Press Allow, then run this again.')
     if state != "device":
         sys.exit("Can't reach %s (%s). Is the TV on, on this network, with debugging on?"
                  % (tv.serial, state or "no answer"))
+
+    if args.probe:
+        for name, value in tv.probe().items():
+            print("%-26s %s" % (name, value))
+        return
 
     Handler.tv = tv
     Handler.token = args.token or secrets.token_urlsafe(12)
