@@ -113,7 +113,7 @@ peut l'ajouter à l'écran d'accueil du téléphone. Elle offre : croix directio
 long = menu des tuiles TV Detox) ou pavé tactile (glisser = flèches, toucher = OK), Retour,
 Accueil, Menu, Marche/Arrêt, Source, Réglages, Recherche, volume et chaînes (maintien =
 répétition), lecture/pause/avance/retour, Muet, chiffres 0-9, Info, chaîne précédente, touches
-couleur, TV, HDMI 1/2, Guide, envoi de texte (ASCII seulement : les accents sont retirés), et
+couleur, HDMI 1/2/3, TV, AV, Guide, envoi de texte (ASCII seulement : les accents sont retirés), et
 lancement des apps installées (avec leur nom). Un voyant indique si la TV répond ; le serveur se
 reconnecte tout seul après un redémarrage de la TV. Les touches passent par un shell adb
 permanent pour plus de réactivité. Depuis un ordinateur, les
@@ -131,7 +131,11 @@ d'autres appareils du réseau peuvent demander à contrôler la TV.
 
 Marque vendue surtout aux Émirats / en Afrique ; pas de fiche officielle trouvée pour ce modèle.
 Les fiches revendeurs du 43" parlent d'Android (souvent un Android « téléphone » non certifié
-Android TV, avec tuner DVB-T2/S2 et 2 HDMI). À vérifier avec `--probe`. Points à connaître :
+Android TV, avec tuner DVB-T2/S2). À vérifier avec `--probe`. Connectique vue sur la TV de
+l'utilisateur : 3 HDMI, AV composite (jaune/blanc/rouge), Ethernet, 2 USB, sortie audio coaxiale,
+antenne et satellite. Points à connaître :
+
+- Ethernet : brancher un câble rend la connexion adb bien plus stable que le Wi-Fi.
 
 - Mode développeur : Paramètres → (Système / Préférences) → À propos → 7 appuis sur **Numéro de
   build** / **Version**. Si l'écran de réglages TV n'a pas d'Options développeur, ouvrir l'app
@@ -139,7 +143,7 @@ Android TV, avec tuner DVB-T2/S2 et 2 HDMI). À vérifier avec `--probe`. Points
   USB** et, s'il existe, **ADB par réseau** (port 5555). Note l'IP de la TV (Paramètres → Réseau).
 - **Marche/Arrêt** : éteint la TV, mais en veille le Wi-Fi est en général coupé, donc la rallumer
   par le réseau ne marche souvent pas (utiliser la télécommande physique).
-- HDMI 1/2 (`KEYCODE_TV_INPUT_HDMI_n`), Guide, touches couleur : dépend du firmware. Si rien ne
+- HDMI 1/2/3 (`KEYCODE_TV_INPUT_HDMI_n`), AV (`KEYCODE_TV_INPUT_COMPOSITE_1`), Guide, touches couleur : dépend du firmware. Si rien ne
   se passe, utiliser **Source**. Pour une touche maison inconnue, demander à l'utilisateur
   d'appuyer dessus pendant `adb shell getevent -lt` pour lire son code.
 - Si `--probe` dit « plain Android », les apps sont listées via `LAUNCHER` (pas `LEANBACK`) et
