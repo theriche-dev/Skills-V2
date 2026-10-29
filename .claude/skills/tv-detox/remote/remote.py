@@ -8,23 +8,29 @@
     python3 remote.py emulator-5554       # an adb serial works too
 
 Open the printed URL on your phone (same Wi-Fi). The URL carries a random token:
-without it, nobody else on the network can send keys. Only needs Python 3 and adb.
+without it, nobody else on the network can send keys. Only needs Python 3: if adb is
+missing, Google's platform-tools are downloaded once into ~/.tv-remote.
 """
 import argparse
+import io
 import json
 import os
+import platform
 import re
 import secrets
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
 import threading
 import time
 import unicodedata
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from urllib.request import urlopen
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -73,8 +79,35 @@ def target_of(arg):
     return arg
 
 
+ADB = "adb"
+TOOLS = os.path.join(os.path.expanduser("~"), ".tv-remote")
+
+
+def find_adb():
+    """adb from PATH, else a copy from an earlier run, else Google's platform-tools, downloaded once."""
+    exe = "adb.exe" if os.name == "nt" else "adb"
+    local = os.path.join(TOOLS, "platform-tools", exe)
+    for candidate in (shutil.which("adb"), local):
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    system = {"Windows": "windows", "Darwin": "darwin", "Linux": "linux"}.get(platform.system())
+    if not system:
+        sys.exit("adb est introuvable : https://developer.android.com/tools/releases/platform-tools")
+    url = "https://dl.google.com/android/repository/platform-tools-latest-%s.zip" % system
+    print("adb introuvable, téléchargement des platform-tools de Google (environ 10 Mo)…")
+    try:
+        with urlopen(url, timeout=60) as response:
+            zipfile.ZipFile(io.BytesIO(response.read())).extractall(TOOLS)
+    except Exception as e:
+        sys.exit("Impossible de télécharger adb (%s). Récupère-le sur "
+                 "https://developer.android.com/tools/releases/platform-tools" % e)
+    if os.name != "nt":
+        os.chmod(local, 0o755)
+    return local
+
+
 def adb(*args, timeout=10):
-    return subprocess.run(["adb", *args], capture_output=True, text=True, timeout=timeout)
+    return subprocess.run([ADB, *args], capture_output=True, text=True, timeout=timeout)
 
 
 def lan_ip():
@@ -95,13 +128,13 @@ def find_tv():
     if len(devices) == 1:
         return devices[0]
     if len(devices) > 1:
-        sys.exit("Several devices are connected to adb, pick one: " + ", ".join(devices))
+        sys.exit("Plusieurs appareils sont connectés à adb, choisis-en un : " + ", ".join(devices))
 
     me = lan_ip()
     if me.startswith("127."):
-        sys.exit("No network found. Name the TV: python3 remote.py <TV_IP>")
+        sys.exit("Pas de réseau trouvé. Donne l'IP de la TV : python3 remote.py <IP_TV>")
     prefix = me.rsplit(".", 1)[0]
-    print("Looking for the TV on %s.0/24 (port 5555)…" % prefix)
+    print("Recherche de la TV sur %s.0/24 (port 5555)…" % prefix)
 
     def open_5555(host):
         try:
@@ -116,9 +149,9 @@ def find_tv():
     if len(hosts) == 1:
         return hosts[0] + ":5555"
     if hosts:
-        sys.exit("Several devices answer on port 5555, pick one: " + ", ".join(hosts))
-    sys.exit("No TV found on the network. Check that network/USB debugging is on, then name it: "
-             "python3 remote.py <TV_IP> (Settings > Network on the TV shows its IP).")
+        sys.exit("Plusieurs appareils répondent sur le port 5555, choisis-en un : " + ", ".join(hosts))
+    sys.exit("Aucune TV trouvée : son accès adb (port 5555) est fermé ou la TV n'est pas sur ce réseau. "
+             "Si tu connais son IP (réglages réseau de la TV) : python3 remote.py <IP_TV>")
 
 
 def ascii_text(text):
@@ -165,7 +198,7 @@ class TV:
             for _ in range(2):
                 if self.shell_proc is None or self.shell_proc.poll() is not None:
                     self.shell_proc = subprocess.Popen(
-                        ["adb", "-s", self.serial, "shell"], stdin=subprocess.PIPE,
+                        [ADB, "-s", self.serial, "shell"], stdin=subprocess.PIPE,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
                 try:
                     self.shell_proc.stdin.write(command + "\n")
@@ -298,18 +331,15 @@ def main():
                         help="print what the TV is (model, Android, inputs) and exit")
     args = parser.parse_args()
 
-    try:
-        adb("version").check_returncode()
-    except (OSError, subprocess.CalledProcessError):
-        sys.exit("adb is missing. Mac: brew install android-platform-tools · "
-                 "Windows/Linux: https://developer.android.com/tools/releases/platform-tools")
+    global ADB
+    ADB = find_adb()
 
     tv = TV(target_of(args.tv) if args.tv else find_tv())
     state = tv.connect()
     if "unauthorized" in state:
-        sys.exit('Your TV is asking "Allow debugging?". Press Allow, then run this again.')
+        sys.exit('La TV demande « Autoriser le débogage ? ». Choisis Autoriser, puis relance.')
     if state != "device":
-        sys.exit("Can't reach %s (%s). Is the TV on, on this network, with debugging on?"
+        sys.exit("Impossible de joindre %s (%s). La TV est-elle allumée, sur ce réseau, avec le débogage actif ?"
                  % (tv.serial, state or "no answer"))
 
     if args.probe:
@@ -321,9 +351,9 @@ def main():
     Handler.token = args.token or secrets.token_urlsafe(12)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     shown = lan_ip() if args.host == "0.0.0.0" else args.host
-    print("Remote for %s is ready. Open this on your phone (same Wi-Fi):" % tv.serial)
+    print("Télécommande prête pour %s. Ouvre cette adresse sur ton téléphone (même Wi-Fi) :" % tv.serial)
     print("  http://%s:%d/?t=%s" % (shown, args.port, Handler.token))
-    print("Ctrl+C to stop.")
+    print("Ctrl+C pour arrêter.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -106,7 +106,8 @@ python3 remote/remote.py <TV>            # ou --port 9000, --host 127.0.0.1
 python3 remote/remote.py <TV> --probe    # marque, modèle, Android, Android TV ou non, launcher, entrées HDMI
 ```
 
-Commence par `--probe` sur une TV inconnue pour savoir quoi adapter. Le script se connecte à la
+Si adb manque, le script télécharge une fois les platform-tools officiels de Google dans
+`~/.tv-remote` : il suffit de Python 3. Commence par `--probe` sur une TV inconnue pour savoir quoi adapter. Le script se connecte à la
 TV, puis affiche une URL du type `http://192.168.1.20:8765/?t=<jeton>`.
 L'utilisateur l'ouvre sur son téléphone (même Wi-Fi) ou dans le navigateur de l'ordinateur et
 peut l'ajouter à l'écran d'accueil du téléphone. Elle offre : croix directionnelle + OK (appui
