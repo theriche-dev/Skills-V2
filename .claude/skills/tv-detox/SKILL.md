@@ -133,12 +133,17 @@ Marque vendue surtout aux Émirats / en Afrique ; pas de fiche officielle trouv�
 Les fiches revendeurs du 43" parlent d'Android (souvent un Android « téléphone » non certifié
 Android TV, avec tuner DVB-T2/S2). À vérifier avec `--probe`. Connectique vue sur la TV de
 l'utilisateur : 3 HDMI, AV composite (jaune/blanc/rouge), Ethernet, 2 USB, sortie audio coaxiale,
-antenne et satellite. Points à connaître :
+antenne et satellite. Écran « Infos système » de cette TV : Android 13, 1 Go de RAM, modèle
+`SMART_TV`, firmware `20240126_110242`, 4 cœurs, GPU Mali-G31. C'est un menu maison, pas les
+Paramètres Android : « Numéro de build » n'y apparaît pas. Avec 1 Go, le nettoyage (section 3)
+aide beaucoup ; voir aussi la note « TCL 32S4K » (954 Mo) dans `upstream/README.md`.
+Points à connaître :
 
 - Ethernet : brancher un câble rend la connexion adb bien plus stable que le Wi-Fi.
 
 - Mode développeur : Paramètres → (Système / Préférences) → À propos → 7 appuis sur **Numéro de
-  build** / **Version**. Si l'écran de réglages TV n'a pas d'Options développeur, ouvrir l'app
+  build** / **Version**. Sur l'écran maison « Infos système », essayer 7 appuis sur **Version
+  Android** puis sur **Version Firmware** (message « Vous êtes développeur »). Si l'écran de réglages TV n'a pas d'Options développeur, ouvrir l'app
   « Paramètres » Android (`com.android.settings`) depuis la liste des apps. Activer le **débogage
   USB** et, s'il existe, **ADB par réseau** (port 5555). Note l'IP de la TV (Paramètres → Réseau).
 - **Marche/Arrêt** : éteint la TV, mais en veille le Wi-Fi est en général coupé, donc la rallumer
